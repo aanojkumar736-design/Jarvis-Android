@@ -1,0 +1,17 @@
+JARVIS V4.2 Vosk Status Fix
+
+Screen par ab clear status dikhega:
+PREPARING / DOWNLOADING / EXTRACTING / LOADING / LISTENING / ERROR
+
+Fixes:
+- Adhoora model automatically delete karke fresh retry
+- Error message app screen par visible
+- Vosk ne jo suna, woh 'Suna: ...' me visible
+- Jarvis ke common sound-alike words bhi detect
+- No login, key, or Picovoice
+
+Test:
+1. Fresh APK install.
+2. START OFFLINE WAKE MODE.
+3. LISTENING aane tak wait.
+4. Boliye: Jarvis

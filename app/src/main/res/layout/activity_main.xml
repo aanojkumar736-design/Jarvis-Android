@@ -20,6 +20,11 @@
         android:gravity="center" android:padding="8dp" android:text="No login or key. First start downloads the offline model once (~40 MB)."
         android:textColor="#91A9B8" android:textSize="14sp"/>
 
+    <TextView android:id="@+id/engineDetail" android:layout_width="match_parent"
+        android:layout_height="wrap_content" android:gravity="center" android:padding="10dp"
+        android:text="Status: START dabaiye" android:textColor="#4DE4FF"
+        android:textSize="14sp" android:background="@drawable/bg_panel"/>
+
     <ScrollView android:id="@+id/scroll" android:layout_width="match_parent" android:layout_height="0dp"
         android:layout_weight="1" android:layout_marginTop="10dp" android:background="@drawable/bg_panel" android:padding="16dp">
         <LinearLayout android:id="@+id/chatContainer" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical"/>

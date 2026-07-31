@@ -37,6 +37,15 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
     private LinearLayout chatContainer;
     private ScrollView scroll;
     private TextView status;
+    private Button wakeButton;
+    private final android.os.Handler wakeStatusHandler =
+            new android.os.Handler(android.os.Looper.getMainLooper());
+    private final Runnable wakeStatusPoller = new Runnable() {
+        @Override public void run() {
+            refreshWakeStatus();
+            wakeStatusHandler.postDelayed(this, 700);
+        }
+    };
     private CameraManager cameraManager;
     private String flashCameraId;
     private boolean torchOn = false;
@@ -52,7 +61,7 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
         status = findViewById(R.id.status);
         Button micButton = findViewById(R.id.micButton);
         Button sendButton = findViewById(R.id.sendButton);
-        Button wakeButton = findViewById(R.id.wakeButton);
+        wakeButton = findViewById(R.id.wakeButton);
 
         tts = new TextToSpeech(this, this);
         cameraManager = (CameraManager) getSystemService(Context.CAMERA_SERVICE);
@@ -95,6 +104,45 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
         boolean active = getSharedPreferences(WakeWordService.PREFS, MODE_PRIVATE)
                 .getBoolean(WakeWordService.KEY_ACTIVE, false);
         button.setText(active ? "STOP OFFLINE WAKE MODE" : "START OFFLINE WAKE MODE");
+    }
+
+    private void refreshWakeStatus() {
+        android.content.SharedPreferences prefs =
+                getSharedPreferences(WakeWordService.PREFS, MODE_PRIVATE);
+        boolean active = prefs.getBoolean(WakeWordService.KEY_ACTIVE, false);
+        String engineState = prefs.getString(WakeWordService.KEY_STATUS,
+                active ? "PREPARING" : "OFFLINE");
+        String detail = prefs.getString(WakeWordService.KEY_DETAIL, "");
+
+        if (wakeButton != null) {
+            wakeButton.setText(active
+                    ? "STOP OFFLINE WAKE MODE"
+                    : "START OFFLINE WAKE MODE");
+        }
+
+        if ("ERROR".equals(engineState)) status.setText("ERROR");
+        else if ("LISTENING".equals(engineState)) status.setText("LISTENING");
+        else if (active) status.setText(engineState);
+        else status.setText("ONLINE");
+
+        TextView engineDetail = findViewById(R.id.engineDetail);
+        if (engineDetail != null) {
+            String shown = (detail == null || detail.trim().isEmpty())
+                    ? "Status: START dabaiye"
+                    : engineState + " — " + detail;
+            engineDetail.setText(shown);
+        }
+    }
+
+    @Override protected void onResume() {
+        super.onResume();
+        wakeStatusHandler.removeCallbacks(wakeStatusPoller);
+        wakeStatusHandler.post(wakeStatusPoller);
+    }
+
+    @Override protected void onPause() {
+        wakeStatusHandler.removeCallbacks(wakeStatusPoller);
+        super.onPause();
     }
 
     private void requestPermissionsIfNeeded() {
@@ -319,6 +367,7 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
 
     @Override
     protected void onDestroy() {
+        wakeStatusHandler.removeCallbacks(wakeStatusPoller);
         if (tts != null) {
             tts.stop();
             tts.shutdown();

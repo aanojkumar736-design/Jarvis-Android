@@ -41,6 +41,8 @@ public class WakeWordService extends Service implements RecognitionListener, Tex
     public static final String ACTION_STOP = "com.anoj.jarvis.STOP_WAKE";
     public static final String PREFS = "jarvis_wake_prefs";
     public static final String KEY_ACTIVE = "wake_active";
+    public static final String KEY_STATUS = "wake_status";
+    public static final String KEY_DETAIL = "wake_detail";
 
     private static final String CHANNEL_ID = "jarvis_offline_vosk";
     private static final int NOTIFICATION_ID = 87;
@@ -59,6 +61,31 @@ public class WakeWordService extends Service implements RecognitionListener, Tex
     private long armedUntil;
     private long lastWakeAt;
 
+    private void setState(boolean active, String state, String detail) {
+        getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+                .putBoolean(KEY_ACTIVE, active)
+                .putString(KEY_STATUS, state)
+                .putString(KEY_DETAIL, detail)
+                .apply();
+        if (active) updateNotification(detail);
+    }
+
+    private boolean modelLooksValid(File modelDir) {
+        return new File(modelDir, "conf/model.conf").exists()
+                && new File(modelDir, "am/final.mdl").exists();
+    }
+
+    private void deleteRecursively(File file) {
+        if (file == null || !file.exists()) return;
+        if (file.isDirectory()) {
+            File[] children = file.listFiles();
+            if (children != null) {
+                for (File child : children) deleteRecursively(child);
+            }
+        }
+        file.delete();
+    }
+
     @Override public void onCreate() {
         super.onCreate();
         createNotificationChannel();
@@ -72,31 +99,48 @@ public class WakeWordService extends Service implements RecognitionListener, Tex
         if (ACTION_STOP.equals(action)) { stopWakeMode(); return START_NOT_STICKY; }
         startForeground(NOTIFICATION_ID, buildNotification("Preparing offline wake engine…"));
         running = true;
-        getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean(KEY_ACTIVE, true).apply();
+        setState(true, "PREPARING", "Offline engine taiyar ho raha hai");
         startOrDownloadModel();
         return START_STICKY;
     }
 
     private void startOrDownloadModel() {
         File modelDir = new File(getFilesDir(), MODEL_NAME);
-        if (new File(modelDir, "conf").exists()) {
+        if (modelLooksValid(modelDir)) {
+            setState(true, "LOADING", "Offline model load ho raha hai");
             executor.execute(() -> loadModel(modelDir));
             return;
         }
-        updateNotification("Downloading offline model once (~40 MB)…");
+
+        // Purana adhoora/corrupt model ho to fresh retry.
+        if (modelDir.exists()) deleteRecursively(modelDir);
+
+        setState(true, "DOWNLOADING", "Model download ho raha hai (~40 MB)");
         executor.execute(() -> {
+            File zip = new File(getCacheDir(), MODEL_NAME + ".zip");
             try {
-                File zip = new File(getCacheDir(), MODEL_NAME + ".zip");
+                if (zip.exists()) zip.delete();
                 downloadFile(MODEL_URL, zip);
+                if (!running) return;
+
+                setState(true, "EXTRACTING", "Offline model extract ho raha hai");
                 unzip(zip, getFilesDir());
-                //noinspection ResultOfMethodCallIgnored
                 zip.delete();
+
+                if (!modelLooksValid(modelDir)) {
+                    throw new IllegalStateException("Model files incomplete");
+                }
                 loadModel(modelDir);
             } catch (Exception e) {
-                handler.post(() -> {
-                    speak("Boss, offline model download nahi hua. Internet check karke phir try kijiye.");
-                    stopWakeMode();
-                });
+                if (zip.exists()) zip.delete();
+                deleteRecursively(modelDir);
+                String message = e.getClass().getSimpleName() + ": "
+                        + (e.getMessage() == null ? "unknown error" : e.getMessage());
+                setState(false, "ERROR", message);
+                handler.post(() -> speak("Boss, offline model ready nahi hua. App me error status dekhiye."));
+                running = false;
+                stopForeground(STOP_FOREGROUND_REMOVE);
+                stopSelf();
             }
         });
     }
@@ -108,15 +152,18 @@ public class WakeWordService extends Service implements RecognitionListener, Tex
             speechService = new SpeechService(recognizer, 16000.0f);
             handler.post(() -> {
                 if (!running) return;
-                updateNotification("Listening offline for “Jarvis”");
+                setState(true, "LISTENING", "Offline listening active — boliye: Jarvis");
                 speechService.startListening(this);
                 speak("Offline wake mode ready hai Boss.");
             });
         } catch (Exception e) {
-            handler.post(() -> {
-                speak("Boss, offline engine load nahi hua.");
-                stopWakeMode();
-            });
+            String message = e.getClass().getSimpleName() + ": "
+                    + (e.getMessage() == null ? "engine load error" : e.getMessage());
+            setState(false, "ERROR", message);
+            handler.post(() -> speak("Boss, offline engine load nahi hua."));
+            running = false;
+            stopForeground(STOP_FOREGROUND_REMOVE);
+            stopSelf();
         }
     }
 
@@ -159,7 +206,12 @@ public class WakeWordService extends Service implements RecognitionListener, Tex
     private void processText(String text) {
         if (!running || text.isEmpty()) return;
         long now = System.currentTimeMillis();
-        boolean hasJarvis = text.contains("jarvis") || text.contains("service");
+        setState(true, "LISTENING", "Suna: " + text);
+        boolean hasJarvis = text.contains("jarvis")
+                || text.contains("jervis")
+                || text.contains("service")
+                || text.contains("travis")
+                || text.contains("harvest");
         if (hasJarvis && now - lastWakeAt > 1800) {
             lastWakeAt = now;
             armed = true;
@@ -236,7 +288,11 @@ public class WakeWordService extends Service implements RecognitionListener, Tex
 
     private void stopWakeMode() {
         running = false; armed = false;
-        getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean(KEY_ACTIVE, false).apply();
+        getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+                .putBoolean(KEY_ACTIVE, false)
+                .putString(KEY_STATUS, "STOPPED")
+                .putString(KEY_DETAIL, "Offline Wake Mode band hai")
+                .apply();
         handler.removeCallbacksAndMessages(null);
         try { if (speechService != null) { speechService.stop(); speechService.shutdown(); } } catch (Exception ignored) { }
         speechService = null;
@@ -248,7 +304,15 @@ public class WakeWordService extends Service implements RecognitionListener, Tex
     @Override public void onPartialResult(String hypothesis) { processText(textFromJson(hypothesis)); }
     @Override public void onResult(String hypothesis) { processText(textFromJson(hypothesis)); }
     @Override public void onFinalResult(String hypothesis) { processText(textFromJson(hypothesis)); }
-    @Override public void onError(Exception exception) { if (running) handler.postDelayed(() -> startOrDownloadModel(), 1000); }
+    @Override public void onError(Exception exception) {
+        if (!running) return;
+        String message = exception == null ? "unknown"
+                : exception.getClass().getSimpleName() + ": " + exception.getMessage();
+        setState(false, "ERROR", "Mic/Vosk error: " + message);
+        running = false;
+        stopForeground(STOP_FOREGROUND_REMOVE);
+        stopSelf();
+    }
     @Override public void onTimeout() { if (running && speechService != null) try { speechService.startListening(this); } catch (Exception ignored) { } }
     @Override public void onInit(int status) { if (status == TextToSpeech.SUCCESS) { tts.setLanguage(new Locale("hi", "IN")); tts.setSpeechRate(1.0f); } }
     @Override public void onDestroy() { stopWakeMode(); executor.shutdownNow(); if (tts != null) { tts.stop(); tts.shutdown(); } super.onDestroy(); }
