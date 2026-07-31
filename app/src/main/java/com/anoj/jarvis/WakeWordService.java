@@ -17,11 +17,9 @@ import android.os.IBinder;
 import android.os.Looper;
 import android.speech.tts.TextToSpeech;
 
-import androidx.annotation.Nullable;
-
 import org.json.JSONObject;
 import org.vosk.Model;
-import org.vosk.RecognitionListener;
+import org.vosk.android.RecognitionListener;
 import org.vosk.Recognizer;
 import org.vosk.android.SpeechService;
 
@@ -254,5 +252,5 @@ public class WakeWordService extends Service implements RecognitionListener, Tex
     @Override public void onTimeout() { if (running && speechService != null) try { speechService.startListening(this); } catch (Exception ignored) { } }
     @Override public void onInit(int status) { if (status == TextToSpeech.SUCCESS) { tts.setLanguage(new Locale("hi", "IN")); tts.setSpeechRate(1.0f); } }
     @Override public void onDestroy() { stopWakeMode(); executor.shutdownNow(); if (tts != null) { tts.stop(); tts.shutdown(); } super.onDestroy(); }
-    @Nullable @Override public IBinder onBind(Intent intent) { return null; }
+    @Override public IBinder onBind(Intent intent) { return null; }
 }
