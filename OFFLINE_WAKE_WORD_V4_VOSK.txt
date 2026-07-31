@@ -1,0 +1,13 @@
+JARVIS V4 - Vosk Offline Wake Mode
+
+No account, no AccessKey, no login.
+First start downloads the official small English Vosk model once (~40 MB).
+After that wake detection works offline.
+
+Commands:
+- Jarvis
+- Jarvis light on
+- Jarvis light off
+- Say Jarvis, wait for reply, then say light on/off
+
+Vivo: allow microphone, notifications, background activity, auto-start, and unrestricted battery.

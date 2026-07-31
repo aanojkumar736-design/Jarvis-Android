@@ -38,3 +38,6 @@ Notes:
 - Android asks for Microphone and Camera permissions on first run.
 - This version runs phone commands without the browser.
 - AI/Gemini chat is not bundled, because API keys should not be placed inside an APK.
+
+
+V4: Vosk offline wake mode; no key/account. First-run model download required.

@@ -15,36 +15,51 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
-import android.speech.RecognitionListener;
-import android.speech.RecognizerIntent;
-import android.speech.SpeechRecognizer;
 import android.speech.tts.TextToSpeech;
 
-import java.util.ArrayList;
-import java.util.Locale;
+import androidx.annotation.Nullable;
 
-import ai.picovoice.porcupine.Porcupine;
-import ai.picovoice.porcupine.PorcupineManager;
+import org.json.JSONObject;
+import org.vosk.Model;
+import org.vosk.RecognitionListener;
+import org.vosk.Recognizer;
+import org.vosk.android.SpeechService;
+
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.InputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.util.Locale;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
 
 public class WakeWordService extends Service implements RecognitionListener, TextToSpeech.OnInitListener {
-    public static final String ACTION_START = "com.anoj.jarvis.START_WAKE_MODE";
-    public static final String ACTION_STOP = "com.anoj.jarvis.STOP_WAKE_MODE";
-    public static final String PREFS = "jarvis_prefs";
+    public static final String ACTION_START = "com.anoj.jarvis.START_WAKE";
+    public static final String ACTION_STOP = "com.anoj.jarvis.STOP_WAKE";
+    public static final String PREFS = "jarvis_wake_prefs";
     public static final String KEY_ACTIVE = "wake_active";
-    public static final String KEY_ACCESS = "picovoice_access_key";
 
-    private static final String CHANNEL_ID = "jarvis_offline_wake";
-    private static final int NOTIFICATION_ID = 2027;
+    private static final String CHANNEL_ID = "jarvis_offline_vosk";
+    private static final int NOTIFICATION_ID = 87;
+    private static final String MODEL_NAME = "vosk-model-small-en-us-0.15";
+    private static final String MODEL_URL = "https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip";
 
     private final Handler handler = new Handler(Looper.getMainLooper());
-    private PorcupineManager porcupineManager;
-    private SpeechRecognizer recognizer;
-    private Intent recognizerIntent;
+    private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private TextToSpeech tts;
+    private Model model;
+    private SpeechService speechService;
     private CameraManager cameraManager;
     private String flashCameraId;
     private boolean running;
-    private boolean commandListening;
+    private boolean armed;
+    private long armedUntil;
+    private long lastWakeAt;
 
     @Override public void onCreate() {
         super.onCreate();
@@ -52,128 +67,167 @@ public class WakeWordService extends Service implements RecognitionListener, Tex
         tts = new TextToSpeech(this, this);
         cameraManager = (CameraManager) getSystemService(Context.CAMERA_SERVICE);
         findFlashCamera();
-        setupRecognizer();
     }
 
     @Override public int onStartCommand(Intent intent, int flags, int startId) {
         String action = intent == null ? ACTION_START : intent.getAction();
         if (ACTION_STOP.equals(action)) { stopWakeMode(); return START_NOT_STICKY; }
-        startForeground(NOTIFICATION_ID, buildNotification());
+        startForeground(NOTIFICATION_ID, buildNotification("Preparing offline wake engine…"));
         running = true;
         getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean(KEY_ACTIVE, true).apply();
-        startOfflineWakeEngine();
+        startOrDownloadModel();
         return START_STICKY;
     }
 
-    private void startOfflineWakeEngine() {
-        String accessKey = getSharedPreferences(PREFS, MODE_PRIVATE).getString(KEY_ACCESS, "");
-        if (accessKey == null || accessKey.trim().isEmpty()) {
-            speak("Boss, pehle Picovoice AccessKey save kijiye.");
-            stopWakeMode();
+    private void startOrDownloadModel() {
+        File modelDir = new File(getFilesDir(), MODEL_NAME);
+        if (new File(modelDir, "conf").exists()) {
+            executor.execute(() -> loadModel(modelDir));
             return;
         }
-        try {
-            if (porcupineManager != null) { porcupineManager.delete(); porcupineManager = null; }
-            porcupineManager = new PorcupineManager.Builder()
-                    .setAccessKey(accessKey.trim())
-                    .setKeyword(Porcupine.BuiltInKeyword.JARVIS)
-                    .setSensitivity(0.65f)
-                    .build(this, keywordIndex -> onWakeWordDetected());
-            porcupineManager.start();
-        } catch (Exception e) {
-            speak("Boss, offline wake engine start nahi hua. AccessKey check kijiye.");
-            stopWakeMode();
-        }
-    }
-
-    private void onWakeWordDetected() {
-        handler.post(() -> {
-            try { if (porcupineManager != null) porcupineManager.stop(); } catch (Exception ignored) { }
-            speak("Main yahan hoon Boss.");
-            handler.postDelayed(this::startCommandListening, 1200);
+        updateNotification("Downloading offline model once (~40 MB)…");
+        executor.execute(() -> {
+            try {
+                File zip = new File(getCacheDir(), MODEL_NAME + ".zip");
+                downloadFile(MODEL_URL, zip);
+                unzip(zip, getFilesDir());
+                //noinspection ResultOfMethodCallIgnored
+                zip.delete();
+                loadModel(modelDir);
+            } catch (Exception e) {
+                handler.post(() -> {
+                    speak("Boss, offline model download nahi hua. Internet check karke phir try kijiye.");
+                    stopWakeMode();
+                });
+            }
         });
     }
 
-    private void setupRecognizer() {
-        if (!SpeechRecognizer.isRecognitionAvailable(this)) return;
-        recognizer = SpeechRecognizer.createSpeechRecognizer(this);
-        recognizer.setRecognitionListener(this);
-        recognizerIntent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
-        recognizerIntent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
-        recognizerIntent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, "hi-IN");
-        recognizerIntent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3);
-        recognizerIntent.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false);
-    }
-
-    private void startCommandListening() {
-        if (!running || recognizer == null || checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            resumeWakeEngine(); return;
+    private void loadModel(File modelDir) {
+        try {
+            model = new Model(modelDir.getAbsolutePath());
+            Recognizer recognizer = new Recognizer(model, 16000.0f);
+            speechService = new SpeechService(recognizer, 16000.0f);
+            handler.post(() -> {
+                if (!running) return;
+                updateNotification("Listening offline for “Jarvis”");
+                speechService.startListening(this);
+                speak("Offline wake mode ready hai Boss.");
+            });
+        } catch (Exception e) {
+            handler.post(() -> {
+                speak("Boss, offline engine load nahi hua.");
+                stopWakeMode();
+            });
         }
-        commandListening = true;
-        try { recognizer.startListening(recognizerIntent); }
-        catch (Exception e) { commandListening = false; resumeWakeEngine(); }
     }
 
-    private void resumeWakeEngine() {
+    private void downloadFile(String urlText, File out) throws Exception {
+        HttpURLConnection conn = (HttpURLConnection) new URL(urlText).openConnection();
+        conn.setConnectTimeout(20000); conn.setReadTimeout(60000); conn.connect();
+        if (conn.getResponseCode() != HttpURLConnection.HTTP_OK) throw new IllegalStateException("HTTP " + conn.getResponseCode());
+        try (InputStream in = new BufferedInputStream(conn.getInputStream()); BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(out))) {
+            byte[] buffer = new byte[8192]; int n;
+            while ((n = in.read(buffer)) >= 0) { if (!running) throw new InterruptedException(); bos.write(buffer, 0, n); }
+        } finally { conn.disconnect(); }
+    }
+
+    private void unzip(File zipFile, File destination) throws Exception {
+        String root = destination.getCanonicalPath() + File.separator;
+        try (ZipInputStream zis = new ZipInputStream(new BufferedInputStream(new java.io.FileInputStream(zipFile)))) {
+            ZipEntry entry; byte[] buffer = new byte[8192];
+            while ((entry = zis.getNextEntry()) != null) {
+                File target = new File(destination, entry.getName());
+                if (!target.getCanonicalPath().startsWith(root)) throw new SecurityException("Bad zip path");
+                if (entry.isDirectory()) { if (!target.exists() && !target.mkdirs()) throw new IllegalStateException("mkdir failed"); }
+                else {
+                    File parent = target.getParentFile(); if (parent != null && !parent.exists() && !parent.mkdirs()) throw new IllegalStateException("mkdir failed");
+                    try (FileOutputStream fos = new FileOutputStream(target)) { int n; while ((n = zis.read(buffer)) > 0) fos.write(buffer, 0, n); }
+                }
+                zis.closeEntry();
+            }
+        }
+    }
+
+    private String textFromJson(String json) {
+        try {
+            JSONObject o = new JSONObject(json);
+            String text = o.optString("text", "");
+            if (text.isEmpty()) text = o.optString("partial", "");
+            return text.toLowerCase(Locale.ROOT).trim();
+        } catch (Exception e) { return ""; }
+    }
+
+    private void processText(String text) {
+        if (!running || text.isEmpty()) return;
+        long now = System.currentTimeMillis();
+        boolean hasJarvis = text.contains("jarvis") || text.contains("service");
+        if (hasJarvis && now - lastWakeAt > 1800) {
+            lastWakeAt = now;
+            armed = true;
+            armedUntil = now + 9000;
+            if (hasLightOn(text)) { executeLight(true); return; }
+            if (hasLightOff(text)) { executeLight(false); return; }
+            pauseAndSpeak("Main yahan hoon Boss.");
+            return;
+        }
+        if (armed && now <= armedUntil) {
+            if (hasLightOff(text)) { executeLight(false); return; }
+            if (hasLightOn(text)) { executeLight(true); return; }
+            if (text.contains("where") || text.contains("kaha") || text.contains("kahan")) {
+                armed = false; pauseAndSpeak("Main yahan hoon Boss.");
+            }
+        } else if (now > armedUntil) armed = false;
+    }
+
+    private boolean hasLightOn(String t) { return (t.contains("light") || t.contains("torch")) && (t.contains("on") || t.contains("open")); }
+    private boolean hasLightOff(String t) { return (t.contains("light") || t.contains("torch")) && (t.contains("off") || t.contains("close")); }
+
+    private void executeLight(boolean on) {
+        armed = false;
+        setTorch(on);
+        pauseAndSpeak(on ? "Ok Boss, light on kar diya." : "Ok Boss, light off kar diya.");
+    }
+
+    private void pauseAndSpeak(String text) {
+        try { if (speechService != null) speechService.stop(); } catch (Exception ignored) { }
+        speak(text);
         handler.postDelayed(() -> {
-            if (!running || porcupineManager == null) return;
-            try { porcupineManager.start(); } catch (Exception ignored) { }
-        }, 350);
+            if (running && speechService != null) {
+                try { speechService.startListening(this); } catch (Exception ignored) { }
+            }
+        }, 1800);
     }
 
-    private String normalize(String text) {
-        return text.toLowerCase(Locale.ROOT)
-                .replace("टॉर्च", "torch").replace("फ्लैशलाइट", "torch")
-                .replace("लाइट", "light").replace("चालू", "on").replace("बंद", "off")
-                .replaceAll("\\s+", " ").trim();
-    }
-
-    private void handleCommand(String raw) {
-        String c = normalize(raw);
-        if ((c.contains("light") || c.contains("torch")) && (c.contains("off") || c.contains("band"))) {
-            setTorch(false); speak("Ok Boss, light off kar diya.");
-        } else if ((c.contains("light") || c.contains("torch")) && (c.contains("on") || c.contains("chalu") || !c.contains("off"))) {
-            setTorch(true); speak("Ok Boss, light on kar diya.");
-        } else if (c.contains("kaha") || c.contains("where") || c.contains("कहां")) {
-            speak("Main yahan hoon Boss.");
-        } else {
-            speak("Ji Boss, command samajh nahi aayi.");
-        }
-        handler.postDelayed(this::resumeWakeEngine, 1300);
-    }
-
-    private void speak(String text) {
-        if (tts != null) tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "jarvis_offline_reply");
-    }
+    private void speak(String text) { if (tts != null) tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "jarvis_vosk_reply"); }
 
     private void findFlashCamera() {
         try {
             for (String id : cameraManager.getCameraIdList()) {
                 Boolean available = cameraManager.getCameraCharacteristics(id).get(CameraCharacteristics.FLASH_INFO_AVAILABLE);
                 Integer facing = cameraManager.getCameraCharacteristics(id).get(CameraCharacteristics.LENS_FACING);
-                if (Boolean.TRUE.equals(available) && (facing == null || facing == CameraCharacteristics.LENS_FACING_BACK)) {
-                    flashCameraId = id; return;
-                }
+                if (Boolean.TRUE.equals(available) && (facing == null || facing == CameraCharacteristics.LENS_FACING_BACK)) { flashCameraId = id; return; }
             }
         } catch (Exception ignored) { }
     }
 
     private void setTorch(boolean enabled) {
+        if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) return;
         if (flashCameraId == null) findFlashCamera();
         if (flashCameraId == null) return;
         try { cameraManager.setTorchMode(flashCameraId, enabled); } catch (Exception ignored) { }
     }
 
-    private Notification buildNotification() {
+    private Notification buildNotification(String text) {
         PendingIntent open = PendingIntent.getActivity(this, 0, new Intent(this, MainActivity.class), PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         Intent stopIntent = new Intent(this, WakeWordService.class); stopIntent.setAction(ACTION_STOP);
         PendingIntent stop = PendingIntent.getService(this, 1, stopIntent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         Notification.Builder b = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O ? new Notification.Builder(this, CHANNEL_ID) : new Notification.Builder(this);
-        return b.setSmallIcon(R.drawable.ic_jarvis).setContentTitle("JARVIS offline wake active")
-                .setContentText("Say “Jarvis”, then speak a command")
-                .setContentIntent(open).setOngoing(true)
-                .addAction(new Notification.Action.Builder(null, "Stop", stop).build()).build();
+        return b.setSmallIcon(R.drawable.ic_jarvis).setContentTitle("JARVIS offline wake active").setContentText(text)
+                .setContentIntent(open).setOngoing(true).addAction(new Notification.Action.Builder(null, "Stop", stop).build()).build();
     }
+
+    private void updateNotification(String text) { getSystemService(NotificationManager.class).notify(NOTIFICATION_ID, buildNotification(text)); }
 
     private void createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -183,32 +237,22 @@ public class WakeWordService extends Service implements RecognitionListener, Tex
     }
 
     private void stopWakeMode() {
-        running = false; commandListening = false;
+        running = false; armed = false;
         getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean(KEY_ACTIVE, false).apply();
         handler.removeCallbacksAndMessages(null);
-        try { if (porcupineManager != null) { porcupineManager.stop(); porcupineManager.delete(); } } catch (Exception ignored) { }
-        porcupineManager = null;
-        if (recognizer != null) { recognizer.cancel(); recognizer.destroy(); recognizer = null; }
+        try { if (speechService != null) { speechService.stop(); speechService.shutdown(); } } catch (Exception ignored) { }
+        speechService = null;
+        try { if (model != null) model.close(); } catch (Exception ignored) { }
+        model = null;
         stopForeground(STOP_FOREGROUND_REMOVE); stopSelf();
     }
 
-    @Override public void onResults(android.os.Bundle results) {
-        commandListening = false;
-        ArrayList<String> list = results.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
-        if (list != null && !list.isEmpty()) handleCommand(list.get(0)); else resumeWakeEngine();
-    }
-    @Override public void onError(int error) { commandListening = false; resumeWakeEngine(); }
-    @Override public void onReadyForSpeech(android.os.Bundle params) { }
-    @Override public void onBeginningOfSpeech() { }
-    @Override public void onRmsChanged(float rmsdB) { }
-    @Override public void onBufferReceived(byte[] buffer) { }
-    @Override public void onEndOfSpeech() { }
-    @Override public void onPartialResults(android.os.Bundle partialResults) { }
-    @Override public void onEvent(int eventType, android.os.Bundle params) { }
-
-    @Override public void onInit(int status) {
-        if (status == TextToSpeech.SUCCESS) { tts.setLanguage(new Locale("hi", "IN")); tts.setSpeechRate(1.0f); }
-    }
-    @Override public void onDestroy() { stopWakeMode(); if (tts != null) { tts.stop(); tts.shutdown(); } super.onDestroy(); }
-    @Override public IBinder onBind(Intent intent) { return null; }
+    @Override public void onPartialResult(String hypothesis) { processText(textFromJson(hypothesis)); }
+    @Override public void onResult(String hypothesis) { processText(textFromJson(hypothesis)); }
+    @Override public void onFinalResult(String hypothesis) { processText(textFromJson(hypothesis)); }
+    @Override public void onError(Exception exception) { if (running) handler.postDelayed(() -> startOrDownloadModel(), 1000); }
+    @Override public void onTimeout() { if (running && speechService != null) try { speechService.startListening(this); } catch (Exception ignored) { } }
+    @Override public void onInit(int status) { if (status == TextToSpeech.SUCCESS) { tts.setLanguage(new Locale("hi", "IN")); tts.setSpeechRate(1.0f); } }
+    @Override public void onDestroy() { stopWakeMode(); executor.shutdownNow(); if (tts != null) { tts.stop(); tts.shutdown(); } super.onDestroy(); }
+    @Nullable @Override public IBinder onBind(Intent intent) { return null; }
 }
