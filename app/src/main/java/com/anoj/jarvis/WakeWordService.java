@@ -16,7 +16,6 @@ import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
 import android.speech.tts.TextToSpeech;
-import android.speech.RecognitionListener;
 import android.speech.RecognizerIntent;
 import android.speech.SpeechRecognizer;
 import android.os.Bundle;
@@ -257,7 +256,7 @@ public class WakeWordService extends Service implements RecognitionListener, Tex
                 if (commandRecognizer != null) commandRecognizer.destroy();
                 commandRecognizer = SpeechRecognizer.createSpeechRecognizer(this);
 
-                commandRecognizer.setRecognitionListener(new RecognitionListener() {
+                commandRecognizer.setRecognitionListener(new android.speech.RecognitionListener() {
                     @Override public void onReadyForSpeech(Bundle params) {
                         setState(true, "COMMAND", "Sun raha hoon Boss...");
                     }

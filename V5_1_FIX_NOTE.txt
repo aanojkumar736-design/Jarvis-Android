@@ -1,0 +1,1 @@
+Fixes Java build error caused by conflicting RecognitionListener interfaces (Vosk vs Android SpeechRecognizer).
