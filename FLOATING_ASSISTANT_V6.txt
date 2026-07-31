@@ -1,0 +1,10 @@
+JARVIS V6 Floating Assistant
+
+- Tiny 38dp floating J button over all apps.
+- Tap: same-size mic icon appears and Google/Android speech recognition listens.
+- After command: mic returns to J.
+- Drag bubble anywhere. Position is remembered.
+- Universal installed-app opener: say app name + open/kholo.
+- YouTube/Google search, camera, WhatsApp, Chrome, ChatGPT, Home and torch on/off.
+- Requires Display over other apps permission and microphone permission.
+- Foreground notification keeps the assistant active more reliably.

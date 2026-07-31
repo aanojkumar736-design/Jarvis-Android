@@ -13,6 +13,13 @@
         android:layout_gravity="center_horizontal" android:layout_marginTop="8dp" android:text="ONLINE"
         android:textColor="#4DE4FF" android:textSize="20sp" android:textStyle="bold" android:letterSpacing="0.18"/>
 
+    <Button android:id="@+id/floatingButton" android:layout_width="match_parent" android:layout_height="58dp"
+        android:layout_marginTop="18dp" android:background="@drawable/bg_button" android:text="ENABLE FLOATING J ASSISTANT"
+        android:textColor="#FFFFFF" android:textSize="16sp" android:textStyle="bold"/>
+    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center"
+        android:padding="7dp" android:text="Tiny J bubble: tap → mic, command boliye → phir J ban jayega."
+        android:textColor="#91A9B8" android:textSize="13sp"/>
+
     <Button android:id="@+id/wakeButton" android:layout_width="match_parent" android:layout_height="60dp"
         android:layout_marginTop="18dp" android:background="@drawable/bg_button" android:text="START OFFLINE WAKE MODE"
         android:textColor="#FFFFFF" android:textSize="17sp" android:textStyle="bold"/>

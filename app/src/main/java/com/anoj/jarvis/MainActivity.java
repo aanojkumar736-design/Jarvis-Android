@@ -14,6 +14,7 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.provider.MediaStore;
+import android.provider.Settings;
 import android.speech.RecognizerIntent;
 import android.speech.tts.TextToSpeech;
 import android.view.Gravity;
@@ -31,6 +32,7 @@ import java.util.Locale;
 public class MainActivity extends Activity implements TextToSpeech.OnInitListener {
     private static final int REQ_SPEECH = 101;
     private static final int REQ_PERMISSIONS = 102;
+    private static final int REQ_OVERLAY = 103;
 
     private TextToSpeech tts;
     private EditText input;
@@ -62,6 +64,7 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
         Button micButton = findViewById(R.id.micButton);
         Button sendButton = findViewById(R.id.sendButton);
         wakeButton = findViewById(R.id.wakeButton);
+        Button floatingButton = findViewById(R.id.floatingButton);
 
         tts = new TextToSpeech(this, this);
         cameraManager = (CameraManager) getSystemService(Context.CAMERA_SERVICE);
@@ -76,6 +79,7 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
             submit(input.getText().toString());
             return true;
         });
+        floatingButton.setOnClickListener(v -> enableFloatingAssistant());
         micButton.setOnClickListener(v -> startVoiceRecognition());
         updateWakeButton(wakeButton);
         wakeButton.setOnClickListener(v -> {
@@ -98,6 +102,36 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
             }
             new android.os.Handler(getMainLooper()).postDelayed(() -> updateWakeButton(wakeButton), 500);
         });
+    }
+
+    private void enableFloatingAssistant() {
+        if (!Settings.canDrawOverlays(this)) {
+            Intent permission = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                    Uri.parse("package:" + getPackageName()));
+            startActivityForResult(permission, REQ_OVERLAY);
+            addBot("Boss, Display over other apps permission allow kijiye. Phir app me wapas aaiye.");
+            return;
+        }
+        Intent i = new Intent(this, FloatingAssistantService.class);
+        i.setAction(FloatingAssistantService.ACTION_START);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(i);
+        else startService(i);
+        addBot("Floating J Assistant chalu ho gaya Boss. Chhote J ko tap karke command boliye.");
+    }
+
+    @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQ_OVERLAY && Settings.canDrawOverlays(this)) {
+            enableFloatingAssistant();
+            return;
+        }
+        if (requestCode == REQ_SPEECH && resultCode == RESULT_OK && data != null) {
+            ArrayList<String> results = data.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS);
+            if (results != null && !results.isEmpty()) submit(results.get(0));
+            status.setText("ONLINE");
+        } else if (requestCode == REQ_SPEECH) {
+            status.setText("ONLINE");
+        }
     }
 
     private void updateWakeButton(Button button) {
@@ -344,16 +378,6 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
     private void toast(String text) {
         Toast.makeText(this, text, Toast.LENGTH_SHORT).show();
         addBot(text);
-    }
-
-    @Override
-    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-        super.onActivityResult(requestCode, resultCode, data);
-        status.setText("ONLINE");
-        if (requestCode == REQ_SPEECH && resultCode == RESULT_OK && data != null) {
-            ArrayList<String> results = data.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS);
-            if (results != null && !results.isEmpty()) submit(results.get(0));
-        }
     }
 
     @Override
