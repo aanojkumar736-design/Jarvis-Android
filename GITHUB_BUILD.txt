@@ -1,0 +1,15 @@
+JARVIS APK — GitHub Build
+
+1. GitHub par naya repository banaye.
+2. Is ZIP ke andar ke saare files repository me upload kare.
+   IMPORTANT: Jarvis_Android_Native folder ko ek extra outer folder ke roop me upload na karein.
+   Repository ke root par app, .github, build.gradle, settings.gradle dikhne chahiye.
+3. Commit changes.
+4. Repository me Actions tab khole.
+5. "Build JARVIS APK" workflow khole.
+6. Run workflow dabaye.
+7. Build green hone ke baad run khole.
+8. Artifacts section se "JARVIS-debug-APK" download kare.
+9. ZIP extract karke app-debug.apk install kare.
+
+No AndroidIDE or PC required.
