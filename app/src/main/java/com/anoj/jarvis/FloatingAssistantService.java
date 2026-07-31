@@ -22,6 +22,9 @@ import android.provider.Settings;
 import android.speech.RecognitionListener;
 import android.speech.RecognizerIntent;
 import android.speech.SpeechRecognizer;
+import android.speech.tts.TextToSpeech;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
@@ -46,12 +49,20 @@ public class FloatingAssistantService extends Service {
     private CameraManager cameraManager;
     private String flashCameraId;
     private boolean listening;
+    private TextToSpeech tts;
+    private final Handler handler = new Handler(Looper.getMainLooper());
 
     @Override public void onCreate() {
         super.onCreate();
         createChannel();
         cameraManager = (CameraManager) getSystemService(Context.CAMERA_SERVICE);
         findFlashCamera();
+        tts = new TextToSpeech(this, status -> {
+            if (status == TextToSpeech.SUCCESS) {
+                tts.setLanguage(new Locale("hi", "IN"));
+                tts.setSpeechRate(1.0f);
+            }
+        });
     }
 
     @Override public int onStartCommand(Intent intent, int flags, int startId) {
@@ -226,7 +237,19 @@ public class FloatingAssistantService extends Service {
             Intent cam = new Intent(android.provider.MediaStore.INTENT_ACTION_STILL_IMAGE_CAMERA);
             cam.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK); safeStart(cam); return;
         }
-        openUrl("https://www.google.com/search?q=" + android.net.Uri.encode(raw));
+        speakThenSearch(raw);
+    }
+
+
+    private void speakThenSearch(String raw) {
+        String message = "Boss, ye command direct available nahi hai. Google par search kar raha hoon.";
+        Toast.makeText(this, message, Toast.LENGTH_SHORT).show();
+        if (tts != null) {
+            tts.speak(message, TextToSpeech.QUEUE_FLUSH, null, "jarvis_fallback");
+            handler.postDelayed(() -> openUrl("https://www.google.com/search?q=" + android.net.Uri.encode(raw)), 2200);
+        } else {
+            openUrl("https://www.google.com/search?q=" + android.net.Uri.encode(raw));
+        }
     }
 
     private String normalize(String s) {
@@ -388,6 +411,11 @@ public class FloatingAssistantService extends Service {
             try { windowManager.removeView(bubble); } catch (Exception ignored) { }
         }
         bubble = null;
+        handler.removeCallbacksAndMessages(null);
+        if (tts != null) {
+            try { tts.stop(); tts.shutdown(); } catch (Exception ignored) { }
+            tts = null;
+        }
         super.onDestroy();
     }
 

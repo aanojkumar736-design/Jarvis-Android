@@ -1,0 +1,1 @@
+Unknown commands now speak a Boss message before opening Google search.
