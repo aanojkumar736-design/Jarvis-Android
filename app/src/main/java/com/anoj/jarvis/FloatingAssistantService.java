@@ -8,6 +8,7 @@ import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ApplicationInfo;
+import android.content.pm.ServiceInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.graphics.Color;
@@ -59,7 +60,7 @@ public class FloatingAssistantService extends Service {
             stopSelf();
             return START_NOT_STICKY;
         }
-        startForeground(NOTIFICATION_ID, buildNotification());
+        startForegroundCompat();
         if (Settings.canDrawOverlays(this)) showBubble();
         else {
             Toast.makeText(this, "Boss, Display over other apps permission allow kijiye.", Toast.LENGTH_LONG).show();
@@ -74,7 +75,7 @@ public class FloatingAssistantService extends Service {
         bubble = new TextView(this);
         bubble.setText("J");
         bubble.setTextColor(Color.WHITE);
-        bubble.setTextSize(15f);
+        bubble.setTextSize(10f);
         bubble.setGravity(Gravity.CENTER);
         bubble.setBackgroundResource(R.drawable.bg_float_bubble);
         bubble.setElevation(10f);
@@ -82,7 +83,7 @@ public class FloatingAssistantService extends Service {
         int type = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
                 ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
                 : WindowManager.LayoutParams.TYPE_PHONE;
-        params = new WindowManager.LayoutParams(dp(38), dp(38), type,
+        params = new WindowManager.LayoutParams(dp(24), dp(24), type,
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE |
                         WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
                 PixelFormat.TRANSLUCENT);
@@ -142,7 +143,11 @@ public class FloatingAssistantService extends Service {
             @Override public void onRmsChanged(float rmsdB) { }
             @Override public void onBufferReceived(byte[] buffer) { }
             @Override public void onEndOfSpeech() { }
-            @Override public void onError(int error) { resetBubble(); }
+            @Override public void onError(int error) {
+                Toast.makeText(FloatingAssistantService.this,
+                        "Mic error " + error + " Boss", Toast.LENGTH_SHORT).show();
+                resetBubble();
+            }
             @Override public void onResults(Bundle results) {
                 ArrayList<String> matches = results.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
                 String command = matches == null || matches.isEmpty() ? "" : matches.get(0);
@@ -173,7 +178,7 @@ public class FloatingAssistantService extends Service {
     private void setBubbleMic() {
         if (bubble != null) {
             bubble.setText("🎤");
-            bubble.setTextSize(14f);
+            bubble.setTextSize(10f);
             bubble.setBackgroundResource(R.drawable.bg_float_listening);
         }
     }
@@ -182,7 +187,7 @@ public class FloatingAssistantService extends Service {
         listening = false;
         if (bubble != null) {
             bubble.setText("J");
-            bubble.setTextSize(15f);
+            bubble.setTextSize(10f);
             bubble.setBackgroundResource(R.drawable.bg_float_bubble);
         }
         stopRecognizerOnly();
@@ -327,6 +332,19 @@ public class FloatingAssistantService extends Service {
             }
         } catch (Exception e) {
             Toast.makeText(this, "Boss, torch control nahi hua.", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void startForegroundCompat() {
+        Notification notification = buildNotification();
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            int types = ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE;
+            if (Build.VERSION.SDK_INT >= 34) {
+                types |= ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE;
+            }
+            startForeground(NOTIFICATION_ID, notification, types);
+        } else {
+            startForeground(NOTIFICATION_ID, notification);
         }
     }
 

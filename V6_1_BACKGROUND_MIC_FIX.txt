@@ -1,0 +1,6 @@
+JARVIS V6.1
+- Floating service now declares microphone foreground-service type.
+- Android 14 foreground service starts with microphone + special-use types.
+- Tiny 24dp point-like J bubble.
+- Same tiny size changes to mic while listening.
+- Mic error code is shown for diagnosis.
