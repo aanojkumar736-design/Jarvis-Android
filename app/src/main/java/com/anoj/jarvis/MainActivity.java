@@ -53,12 +53,23 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
         Button micButton = findViewById(R.id.micButton);
         Button sendButton = findViewById(R.id.sendButton);
         Button wakeButton = findViewById(R.id.wakeButton);
+        EditText accessKeyInput = findViewById(R.id.accessKeyInput);
+        Button saveKeyButton = findViewById(R.id.saveKeyButton);
 
         tts = new TextToSpeech(this, this);
         cameraManager = (CameraManager) getSystemService(Context.CAMERA_SERVICE);
         findFlashCamera();
 
         requestPermissionsIfNeeded();
+
+        String savedKey = getSharedPreferences(WakeWordService.PREFS, MODE_PRIVATE).getString(WakeWordService.KEY_ACCESS, "");
+        if (savedKey != null && !savedKey.isEmpty()) accessKeyInput.setText(savedKey);
+        saveKeyButton.setOnClickListener(v -> {
+            String key = accessKeyInput.getText().toString().trim();
+            if (key.isEmpty()) { addBot("Boss, Picovoice AccessKey paste kijiye."); return; }
+            getSharedPreferences(WakeWordService.PREFS, MODE_PRIVATE).edit().putString(WakeWordService.KEY_ACCESS, key).apply();
+            addBot("Offline wake key save ho gaya Boss.");
+        });
 
         addBot("Namaste Boss. Main JARVIS hoon. Aap mujhe command de sakte hain.");
 
@@ -85,7 +96,7 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
                 }
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(serviceIntent);
                 else startService(serviceIntent);
-                addBot("Background Wake Word Mode chalu hai Boss. App minimize karke boliye: Jarvis, tum kaha ho.");
+                addBot("Offline Wake Word Mode chalu hai Boss. App minimize karke pehle Jarvis boliye, phir command boliye.");
             }
             new android.os.Handler(getMainLooper()).postDelayed(() -> updateWakeButton(wakeButton), 500);
         });

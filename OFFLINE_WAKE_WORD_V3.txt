@@ -1,0 +1,16 @@
+JARVIS V3 - OFFLINE WAKE WORD ENGINE
+
+Engine: Picovoice Porcupine (built-in JARVIS wake word)
+Wake word detection happens on-device after activation.
+A free Picovoice AccessKey is required and must be pasted in the app once.
+Keep the AccessKey private.
+
+Use:
+1. Paste Picovoice AccessKey.
+2. Tap SAVE OFFLINE WAKE KEY.
+3. Tap START WAKE MODE.
+4. Minimize app.
+5. Say "Jarvis".
+6. After "Main yahan hoon Boss", say "light on" or "light off".
+
+Note: Wake-word detection is offline. The follow-up command uses Android speech recognition and may depend on the phone's installed offline speech pack/network.

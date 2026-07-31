@@ -44,6 +44,29 @@
         android:layout_gravity="center_horizontal"
         android:layout_marginTop="12dp"/>
 
+
+    <EditText
+        android:id="@+id/accessKeyInput"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:layout_marginTop="10dp"
+        android:hint="Picovoice AccessKey paste karein"
+        android:textColor="@color/white"
+        android:textColorHint="@color/muted"
+        android:singleLine="true"
+        android:inputType="textPassword"
+        android:background="@drawable/bg_input"/>
+
+    <Button
+        android:id="@+id/saveKeyButton"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:layout_marginTop="8dp"
+        android:text="SAVE OFFLINE WAKE KEY"
+        android:textStyle="bold"
+        android:textColor="@color/white"
+        android:background="@drawable/bg_button"/>
+
     <Button
         android:id="@+id/wakeButton"
         android:layout_width="match_parent"
@@ -58,7 +81,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="7dp"
-        android:text="Say: Jarvis, tum kaha ho  •  Jarvis light on"
+        android:text="Offline wake: say “Jarvis”, then command: “light on”"
         android:textColor="@color/muted"
         android:textSize="12sp"
         android:gravity="center"/>
