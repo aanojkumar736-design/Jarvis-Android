@@ -17,7 +17,7 @@
         android:layout_marginTop="18dp" android:background="@drawable/bg_button" android:text="START OFFLINE WAKE MODE"
         android:textColor="#FFFFFF" android:textSize="17sp" android:textStyle="bold"/>
     <TextView android:id="@+id/offlineInfo" android:layout_width="match_parent" android:layout_height="wrap_content"
-        android:gravity="center" android:padding="8dp" android:text="No login or key. First start downloads the offline model once (~40 MB)."
+        android:gravity="center" android:padding="8dp" android:text="Hybrid mode: offline Jarvis wake + Google jaisi accurate command listening."
         android:textColor="#91A9B8" android:textSize="14sp"/>
 
     <TextView android:id="@+id/engineDetail" android:layout_width="match_parent"

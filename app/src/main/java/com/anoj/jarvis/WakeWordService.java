@@ -16,6 +16,10 @@ import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
 import android.speech.tts.TextToSpeech;
+import android.speech.RecognitionListener;
+import android.speech.RecognizerIntent;
+import android.speech.SpeechRecognizer;
+import android.os.Bundle;
 
 import org.json.JSONObject;
 import org.vosk.Model;
@@ -54,6 +58,7 @@ public class WakeWordService extends Service implements RecognitionListener, Tex
     private TextToSpeech tts;
     private Model model;
     private SpeechService speechService;
+    private SpeechRecognizer commandRecognizer;
     private CameraManager cameraManager;
     private String flashCameraId;
     private boolean running;
@@ -211,14 +216,15 @@ public class WakeWordService extends Service implements RecognitionListener, Tex
                 || text.contains("jervis")
                 || text.contains("service")
                 || text.contains("travis")
-                || text.contains("harvest");
+                || text.contains("harvest")
+                || text.contains("that of");
         if (hasJarvis && now - lastWakeAt > 1800) {
             lastWakeAt = now;
             armed = true;
             armedUntil = now + 9000;
             if (hasLightOn(text)) { executeLight(true); return; }
             if (hasLightOff(text)) { executeLight(false); return; }
-            pauseAndSpeak("Main yahan hoon Boss.");
+            beginGoogleCommandMode();
             return;
         }
         if (armed && now <= armedUntil) {
@@ -228,6 +234,119 @@ public class WakeWordService extends Service implements RecognitionListener, Tex
                 armed = false; pauseAndSpeak("Main yahan hoon Boss.");
             }
         } else if (now > armedUntil) armed = false;
+    }
+
+
+    private void beginGoogleCommandMode() {
+        armed = false;
+        try { if (speechService != null) speechService.stop(); } catch (Exception ignored) { }
+
+        setState(true, "COMMAND", "Main yahan hoon Boss — command boliye");
+        speak("Main yahan hoon Boss. Command boliye.");
+
+        handler.postDelayed(() -> {
+            if (!running) return;
+
+            if (!SpeechRecognizer.isRecognitionAvailable(this)) {
+                setState(true, "LISTENING", "Google command recognizer available nahi");
+                restartOfflineWake();
+                return;
+            }
+
+            try {
+                if (commandRecognizer != null) commandRecognizer.destroy();
+                commandRecognizer = SpeechRecognizer.createSpeechRecognizer(this);
+
+                commandRecognizer.setRecognitionListener(new RecognitionListener() {
+                    @Override public void onReadyForSpeech(Bundle params) {
+                        setState(true, "COMMAND", "Sun raha hoon Boss...");
+                    }
+                    @Override public void onBeginningOfSpeech() { }
+                    @Override public void onRmsChanged(float rmsdB) { }
+                    @Override public void onBufferReceived(byte[] buffer) { }
+                    @Override public void onEndOfSpeech() { }
+
+                    @Override public void onError(int error) {
+                        setState(true, "LISTENING", "Command nahi suna; wake mode wapas chalu");
+                        restartOfflineWakeDelayed();
+                    }
+
+                    @Override public void onResults(Bundle results) {
+                        java.util.ArrayList<String> matches =
+                                results.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
+                        String command = (matches == null || matches.isEmpty())
+                                ? "" : matches.get(0).toLowerCase(Locale.ROOT).trim();
+                        setState(true, "COMMAND", "Command: " + command);
+                        handleGoogleCommand(command);
+                    }
+
+                    @Override public void onPartialResults(Bundle partialResults) {
+                        java.util.ArrayList<String> matches =
+                                partialResults.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
+                        if (matches != null && !matches.isEmpty()) {
+                            setState(true, "COMMAND", "Sun raha: " + matches.get(0));
+                        }
+                    }
+                    @Override public void onEvent(int eventType, Bundle params) { }
+                });
+
+                Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+                intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                        RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+                intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, "hi-IN");
+                intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "hi-IN");
+                intent.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
+                intent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3);
+                commandRecognizer.startListening(intent);
+
+            } catch (Exception e) {
+                setState(true, "LISTENING", "Command error: " + e.getMessage());
+                restartOfflineWakeDelayed();
+            }
+        }, 1600);
+    }
+
+    private void handleGoogleCommand(String command) {
+        if (command == null || command.isEmpty()) {
+            pauseAndSpeak("Boss, command samajh nahi aaya.");
+            return;
+        }
+
+        if (hasLightOff(command)
+                || command.contains("लाइट बंद")
+                || command.contains("टॉर्च बंद")) {
+            executeLight(false);
+            return;
+        }
+
+        if (hasLightOn(command)
+                || command.contains("लाइट चालू")
+                || command.contains("टॉर्च चालू")) {
+            executeLight(true);
+            return;
+        }
+
+        if (command.contains("कहाँ हो") || command.contains("कहा हो")
+                || command.contains("where are you")) {
+            pauseAndSpeak("Main yahan hoon Boss.");
+            return;
+        }
+
+        pauseAndSpeak("Boss, ye command abhi add nahi hai.");
+    }
+
+    private void restartOfflineWakeDelayed() {
+        handler.postDelayed(this::restartOfflineWake, 900);
+    }
+
+    private void restartOfflineWake() {
+        if (!running || speechService == null) return;
+        try {
+            speechService.startListening(this);
+            setState(true, "LISTENING", "Offline wake active — boliye: Jarvis");
+        } catch (Exception e) {
+            setState(false, "ERROR", "Wake restart: " + e.getMessage());
+        }
     }
 
     private boolean hasLightOn(String t) { return (t.contains("light") || t.contains("torch")) && (t.contains("on") || t.contains("open")); }
@@ -244,7 +363,7 @@ public class WakeWordService extends Service implements RecognitionListener, Tex
         speak(text);
         handler.postDelayed(() -> {
             if (running && speechService != null) {
-                try { speechService.startListening(this); } catch (Exception ignored) { }
+                restartOfflineWake();
             }
         }, 1800);
     }
@@ -296,6 +415,13 @@ public class WakeWordService extends Service implements RecognitionListener, Tex
         handler.removeCallbacksAndMessages(null);
         try { if (speechService != null) { speechService.stop(); speechService.shutdown(); } } catch (Exception ignored) { }
         speechService = null;
+        try {
+            if (commandRecognizer != null) {
+                commandRecognizer.cancel();
+                commandRecognizer.destroy();
+            }
+        } catch (Exception ignored) { }
+        commandRecognizer = null;
         try { if (model != null) model.close(); } catch (Exception ignored) { }
         model = null;
         stopForeground(STOP_FOREGROUND_REMOVE); stopSelf();
