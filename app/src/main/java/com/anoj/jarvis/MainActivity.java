@@ -11,6 +11,7 @@ import android.hardware.camera2.CameraAccessException;
 import android.hardware.camera2.CameraCharacteristics;
 import android.hardware.camera2.CameraManager;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.provider.MediaStore;
 import android.speech.RecognizerIntent;
@@ -51,6 +52,7 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
         status = findViewById(R.id.status);
         Button micButton = findViewById(R.id.micButton);
         Button sendButton = findViewById(R.id.sendButton);
+        Button wakeButton = findViewById(R.id.wakeButton);
 
         tts = new TextToSpeech(this, this);
         cameraManager = (CameraManager) getSystemService(Context.CAMERA_SERVICE);
@@ -66,6 +68,33 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
             return true;
         });
         micButton.setOnClickListener(v -> startVoiceRecognition());
+        updateWakeButton(wakeButton);
+        wakeButton.setOnClickListener(v -> {
+            boolean active = getSharedPreferences(WakeWordService.PREFS, MODE_PRIVATE)
+                    .getBoolean(WakeWordService.KEY_ACTIVE, false);
+            Intent serviceIntent = new Intent(this, WakeWordService.class);
+            serviceIntent.setAction(active ? WakeWordService.ACTION_STOP : WakeWordService.ACTION_START);
+            if (active) {
+                startService(serviceIntent);
+                addBot("Background Wake Word Mode band ho gaya Boss.");
+            } else {
+                if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                    requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, REQ_PERMISSIONS);
+                    addBot("Boss, microphone permission allow karke Wake Mode phir dabaiye.");
+                    return;
+                }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(serviceIntent);
+                else startService(serviceIntent);
+                addBot("Background Wake Word Mode chalu hai Boss. App minimize karke boliye: Jarvis, tum kaha ho.");
+            }
+            new android.os.Handler(getMainLooper()).postDelayed(() -> updateWakeButton(wakeButton), 500);
+        });
+    }
+
+    private void updateWakeButton(Button button) {
+        boolean active = getSharedPreferences(WakeWordService.PREFS, MODE_PRIVATE)
+                .getBoolean(WakeWordService.KEY_ACTIVE, false);
+        button.setText(active ? "STOP WAKE MODE" : "START WAKE MODE");
     }
 
     private void requestPermissionsIfNeeded() {

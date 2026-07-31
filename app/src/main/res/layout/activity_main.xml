@@ -44,6 +44,25 @@
         android:layout_gravity="center_horizontal"
         android:layout_marginTop="12dp"/>
 
+    <Button
+        android:id="@+id/wakeButton"
+        android:layout_width="match_parent"
+        android:layout_height="52dp"
+        android:layout_marginTop="14dp"
+        android:text="START WAKE MODE"
+        android:textStyle="bold"
+        android:textColor="@color/white"
+        android:background="@drawable/bg_button"/>
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="7dp"
+        android:text="Say: Jarvis, tum kaha ho  •  Jarvis light on"
+        android:textColor="@color/muted"
+        android:textSize="12sp"
+        android:gravity="center"/>
+
     <ScrollView
         android:id="@+id/scroll"
         android:layout_width="match_parent"

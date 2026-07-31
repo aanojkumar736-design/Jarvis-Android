@@ -1,0 +1,14 @@
+JARVIS Android V2 - Background Wake Word Mode
+
+1. Install the updated APK over the old JARVIS app.
+2. Open JARVIS and allow Microphone + Notification permissions.
+3. Tap START WAKE MODE once.
+4. Minimize the app and say:
+   - Jarvis, tum kaha ho
+   - Jarvis light on
+   - Jarvis light off
+5. Use STOP WAKE MODE or the notification Stop action to disable listening.
+
+Vivo phones: set JARVIS battery usage to Unrestricted / Allow background activity,
+and enable Auto-start if available. Android may still pause speech recognition when
+the phone is deeply asleep, locked for a long time, or another app uses the microphone.
